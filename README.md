@@ -4,18 +4,6 @@ CloudGuardX is a full-stack Cloud Security Posture Management (CSPM) demo platfo
 
 It models the core shape of a modern security SaaS product: a NestJS API, React dashboard, PostgreSQL data model, JWT authentication, RBAC-style permissions, background worker processing, and mock AWS scanning workflows. The project is designed as a public portfolio repository that demonstrates engineering architecture and product thinking without requiring real cloud credentials.
 
-## Screenshots
-
-> Add screenshots to `docs/screenshots/` using these filenames.
-
-![CloudGuardX overview dashboard](docs/screenshots/overview.png)
-
-![Cloud asset inventory](docs/screenshots/assets.png)
-
-![Security findings list](docs/screenshots/findings.png)
-
-![Finding detail workflow](docs/screenshots/finding-detail.png)
-
 ## Features
 
 - Cloud asset inventory with AWS S3 demo resources
@@ -265,6 +253,3 @@ The local `.env.example` values are development placeholders. Replace secrets be
 - Audit log UI and tenant administration screens
 - Deployment manifests and production observability
 
-## License
-
-MIT License placeholder.
