@@ -9,6 +9,14 @@ export default defineConfig({
       "@cloudguardx/shared-types": path.resolve(__dirname, "../../packages/shared-types/src/index.ts")
     }
   },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true
+      }
+    }
+  },
   test: {
     environment: "jsdom"
   }

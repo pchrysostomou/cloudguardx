@@ -9,7 +9,8 @@
       "@cloudguardx/shared-types": ["packages/shared-types/dist"],
       "@cloudguardx/ui": ["packages/ui/dist"]
     },
-    "rootDir": "src"
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/tsconfig.build.tsbuildinfo"
   },
   "exclude": ["node_modules", "test", "dist", "**/*.spec.ts"]
 }

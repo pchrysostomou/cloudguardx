@@ -26,7 +26,7 @@ export class CloudGuardApiClient {
   constructor(options: CloudGuardApiClientOptions = {}) {
     this.accessToken = options.accessToken?.trim() || null;
     this.baseUrl = normalizeBaseUrl(options.baseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "/api");
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? window.fetch.bind(window);
   }
 
   listCloudAccounts(): Promise<CloudAccountSummary[]> {
