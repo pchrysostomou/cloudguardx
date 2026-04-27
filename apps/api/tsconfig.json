@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "outDir": "dist",
+    "baseUrl": "../..",
+    "paths": {
+      "@cloudguardx/aws-connectors": ["packages/aws-connectors/dist"],
+      "@cloudguardx/policy-engine": ["packages/policy-engine/dist"],
+      "@cloudguardx/risk-engine": ["packages/risk-engine/dist"],
+      "@cloudguardx/shared-types": ["packages/shared-types/dist"],
+      "@cloudguardx/ui": ["packages/ui/dist"]
+    },
+    "rootDir": ".",
+    "strictPropertyInitialization": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

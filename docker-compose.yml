@@ -1,0 +1,131 @@
+name: cloudguardx
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudguardx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cloudguardx
+      POSTGRES_USER: cloudguardx
+      POSTGRES_PASSWORD: cloudguardx_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudguardx -d cloudguardx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloudguardx-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: cloudguardx-localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: s3,ec2,iam,sts,cloudtrail,rds,lambda,ecr,secretsmanager,kms
+      DEBUG: "0"
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./infra/localstack/init:/etc/localstack/init/ready.d:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+      target: development
+    container_name: cloudguardx-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://cloudguardx:cloudguardx_dev_password@postgres:5432/cloudguardx?schema=public
+      REDIS_URL: redis://redis:6379
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+      - api-node-modules:/workspace/node_modules
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/worker.Dockerfile
+      target: development
+    container_name: cloudguardx-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://cloudguardx:cloudguardx_dev_password@postgres:5432/cloudguardx?schema=public
+      REDIS_URL: redis://redis:6379
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+      WORKER_ID: cloudguardx-worker-compose
+      SCANNER_WORKER_POLL_INTERVAL_MS: 5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+      - worker-node-modules:/workspace/node_modules
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      target: development
+    container_name: cloudguardx-web
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - .:/workspace
+      - web-node-modules:/workspace/node_modules
+
+volumes:
+  postgres-data:
+  redis-data:
+  localstack-data:
+  api-node-modules:
+  worker-node-modules:
+  web-node-modules:

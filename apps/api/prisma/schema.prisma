@@ -1,0 +1,632 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  INVITED
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum RoleKey {
+  OWNER            @map("owner")
+  ADMIN            @map("admin")
+  SECURITY_ANALYST @map("security_analyst")
+  READ_ONLY        @map("read_only")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum CloudProvider {
+  AWS @map("aws")
+}
+
+enum CloudAccountStatus {
+  PENDING
+  ACTIVE
+  ERROR
+  DISABLED
+}
+
+enum ScanJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum ScanEventLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum AssetType {
+  AWS_S3_BUCKET              @map("aws_s3_bucket")
+  AWS_EC2_INSTANCE           @map("aws_ec2_instance")
+  AWS_IAM_USER               @map("aws_iam_user")
+  AWS_IAM_ROLE               @map("aws_iam_role")
+  AWS_IAM_POLICY             @map("aws_iam_policy")
+  AWS_SECURITY_GROUP         @map("aws_security_group")
+  AWS_RDS_INSTANCE           @map("aws_rds_instance")
+  AWS_LAMBDA_FUNCTION        @map("aws_lambda_function")
+  AWS_CLOUDTRAIL_TRAIL       @map("aws_cloudtrail_trail")
+  AWS_ECR_REPOSITORY         @map("aws_ecr_repository")
+  AWS_SECRETS_MANAGER_SECRET @map("aws_secretsmanager_secret")
+  AWS_KMS_KEY                @map("aws_kms_key")
+}
+
+enum FindingSeverity {
+  CRITICAL      @map("critical")
+  HIGH          @map("high")
+  MEDIUM        @map("medium")
+  LOW           @map("low")
+  INFORMATIONAL @map("informational")
+}
+
+enum FindingStatus {
+  OPEN          @map("open")
+  TRIAGED       @map("triaged")
+  RESOLVED      @map("resolved")
+  RISK_ACCEPTED @map("risk_accepted")
+}
+
+enum AttackGraphNodeKind {
+  RESOURCE @map("resource")
+  IDENTITY @map("identity")
+}
+
+enum AttackGraphEdgeKind {
+  PERMISSION          @map("permission")
+  NETWORK_EXPOSURE    @map("network_exposure")
+  CREDENTIAL_EXPOSURE @map("credential_exposure")
+  DATA_ACCESS         @map("data_access")
+}
+
+enum RemediationSource {
+  HUMAN @map("human")
+  AI    @map("ai")
+}
+
+enum NotificationStatus {
+  UNREAD   @map("unread")
+  READ     @map("read")
+  ARCHIVED @map("archived")
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum RefreshTokenStatus {
+  ACTIVE
+  ROTATED
+  REVOKED
+  REUSED
+  EXPIRED
+}
+
+enum MfaDeviceType {
+  TOTP     @map("totp")
+  WEBAUTHN @map("webauthn")
+}
+
+model User {
+  id                  String         @id @default(uuid()) @db.Uuid
+  email               String         @unique
+  passwordHash        String
+  displayName         String
+  status              UserStatus     @default(ACTIVE)
+  mfaRequired         Boolean        @default(false)
+  lastLoginAt         DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  memberships         Membership[]
+  refreshTokens       RefreshToken[]
+  mfaDevices          MfaDevice[]
+  createdApiKeys      ApiKey[]       @relation("ApiKeyCreator")
+  auditLogs           AuditLog[]     @relation("AuditActor")
+  notifications       Notification[]
+  invitedMemberships  Membership[]   @relation("MembershipInviter")
+  requestedScanJobs   ScanJob[]      @relation("ScanJobRequester")
+  createdRemediations Remediation[]  @relation("RemediationCreator")
+
+  @@map("users")
+}
+
+model Tenant {
+  id                 String              @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String              @unique
+  status             TenantStatus        @default(ACTIVE)
+  settings           Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  memberships        Membership[]
+  roles              Role[]
+  cloudAccounts      CloudAccount[]
+  scanJobs           ScanJob[]
+  scanEvents         ScanEvent[]
+  assets             Asset[]
+  findings           Finding[]
+  policies           Policy[]
+  policyResults      PolicyResult[]
+  riskScores         RiskScore[]
+  complianceMappings ComplianceMapping[]
+  attackGraphNodes   AttackGraphNode[]
+  attackGraphEdges   AttackGraphEdge[]
+  remediations       Remediation[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  apiKeys            ApiKey[]
+  refreshTokens      RefreshToken[]
+  mfaDevices         MfaDevice[]
+
+  @@map("tenants")
+}
+
+model Membership {
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @db.Uuid
+  userId          String           @db.Uuid
+  roleId          String?          @db.Uuid
+  roleKey         RoleKey
+  status          MembershipStatus @default(ACTIVE)
+  invitedByUserId String?          @db.Uuid
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            Role?            @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: NoAction)
+  invitedBy       User?            @relation("MembershipInviter", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, roleKey])
+  @@map("memberships")
+}
+
+model Role {
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String       @db.Uuid
+  key         RoleKey
+  name        String
+  description String
+  isSystem    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  permissions Permission[] @relation("RolePermissions")
+
+  @@unique([tenantId, key])
+  @@unique([tenantId, id])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  action      String   @unique
+  description String
+  roles       Role[]   @relation("RolePermissions")
+  createdAt   DateTime @default(now())
+
+  @@map("permissions")
+}
+
+model CloudAccount {
+  id                   String             @id @default(uuid()) @db.Uuid
+  tenantId             String             @db.Uuid
+  provider             CloudProvider
+  name                 String
+  externalAccountId    String
+  roleArn              String
+  externalIdCiphertext String
+  status               CloudAccountStatus @default(PENDING)
+  lastSuccessfulScanAt DateTime?
+  lastScanError        String?
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scanJobs             ScanJob[]
+  assets               Asset[]
+  findings             Finding[]
+
+  @@unique([tenantId, provider, externalAccountId])
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("cloud_accounts")
+}
+
+model ScanJob {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @db.Uuid
+  cloudAccountId String         @db.Uuid
+  requestedById  String?        @db.Uuid
+  status         ScanJobStatus  @default(QUEUED)
+  scanType       String
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorCode      String?
+  errorMessage   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cloudAccount   CloudAccount   @relation(fields: [tenantId, cloudAccountId], references: [tenantId, id], onDelete: Cascade)
+  requestedBy    User?          @relation("ScanJobRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  events         ScanEvent[]
+  findings       Finding[]
+  policyResults  PolicyResult[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status, createdAt])
+  @@map("scan_jobs")
+}
+
+model ScanEvent {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @db.Uuid
+  scanJobId String         @db.Uuid
+  level     ScanEventLevel
+  message   String
+  metadata  Json?
+  createdAt DateTime       @default(now())
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scanJob   ScanJob        @relation(fields: [tenantId, scanJobId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, scanJobId, createdAt])
+  @@map("scan_events")
+}
+
+model Asset {
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @db.Uuid
+  cloudAccountId String            @db.Uuid
+  provider       CloudProvider
+  assetType      AssetType
+  externalId     String
+  arn            String?
+  region         String?
+  name           String
+  tags           Json?
+  normalized     Json
+  sensitivity    Int               @default(0)
+  criticality    Int               @default(0)
+  firstSeenAt    DateTime          @default(now())
+  lastSeenAt     DateTime          @default(now())
+  deletedAt      DateTime?
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cloudAccount   CloudAccount      @relation(fields: [tenantId, cloudAccountId], references: [tenantId, id], onDelete: Cascade)
+  findings       Finding[]
+  policyResults  PolicyResult[]
+  graphNodes     AttackGraphNode[]
+
+  @@unique([tenantId, cloudAccountId, externalId])
+  @@unique([tenantId, id])
+  @@index([tenantId, assetType])
+  @@index([tenantId, region])
+  @@map("assets")
+}
+
+model Finding {
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenantId           String              @db.Uuid
+  cloudAccountId     String?             @db.Uuid
+  assetId            String?             @db.Uuid
+  policyId           String?             @db.Uuid
+  scanJobId          String?             @db.Uuid
+  dedupeKey          String
+  title              String
+  description        String
+  severity           FindingSeverity
+  status             FindingStatus       @default(OPEN)
+  score              Float
+  evidence           Json
+  firstSeenAt        DateTime            @default(now())
+  lastSeenAt         DateTime            @default(now())
+  resolvedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cloudAccount       CloudAccount?       @relation(fields: [tenantId, cloudAccountId], references: [tenantId, id], onDelete: NoAction)
+  asset              Asset?              @relation(fields: [tenantId, assetId], references: [tenantId, id], onDelete: NoAction)
+  policy             Policy?             @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: NoAction)
+  scanJob            ScanJob?            @relation(fields: [tenantId, scanJobId], references: [tenantId, id], onDelete: NoAction)
+  policyResults      PolicyResult[]
+  riskScore          RiskScore?
+  remediations       Remediation[]
+  complianceMappings ComplianceMapping[]
+
+  @@unique([tenantId, dedupeKey])
+  @@unique([tenantId, id])
+  @@index([tenantId, severity, status])
+  @@index([tenantId, score])
+  @@map("findings")
+}
+
+model Policy {
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenantId           String              @db.Uuid
+  key                String
+  name               String
+  description        String
+  severity           FindingSeverity
+  enabled            Boolean             @default(true)
+  implementation     String
+  parameters         Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  findings           Finding[]
+  policyResults      PolicyResult[]
+  complianceMappings ComplianceMapping[]
+
+  @@unique([tenantId, key])
+  @@unique([tenantId, id])
+  @@index([tenantId, enabled])
+  @@map("policies")
+}
+
+model PolicyResult {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  policyId    String   @db.Uuid
+  scanJobId   String   @db.Uuid
+  assetId     String?  @db.Uuid
+  findingId   String?  @db.Uuid
+  passed      Boolean
+  evidence    Json
+  evaluatedAt DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  policy      Policy   @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: Cascade)
+  scanJob     ScanJob  @relation(fields: [tenantId, scanJobId], references: [tenantId, id], onDelete: Cascade)
+  asset       Asset?   @relation(fields: [tenantId, assetId], references: [tenantId, id], onDelete: NoAction)
+  finding     Finding? @relation(fields: [tenantId, findingId], references: [tenantId, id], onDelete: NoAction)
+
+  @@index([tenantId, policyId, evaluatedAt])
+  @@index([tenantId, assetId])
+  @@map("policy_results")
+}
+
+model RiskScore {
+  id           String          @id @default(uuid()) @db.Uuid
+  tenantId     String          @db.Uuid
+  findingId    String          @unique @db.Uuid
+  score        Float
+  severity     FindingSeverity
+  factors      Json
+  calculatedAt DateTime        @default(now())
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  finding      Finding         @relation(fields: [tenantId, findingId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, findingId])
+  @@index([tenantId, score])
+  @@map("risk_scores")
+}
+
+model ComplianceFramework {
+  id          String              @id @default(uuid()) @db.Uuid
+  key         String
+  name        String
+  version     String
+  description String?
+  controls    ComplianceControl[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([key, version])
+  @@map("compliance_frameworks")
+}
+
+model ComplianceControl {
+  id          String              @id @default(uuid()) @db.Uuid
+  frameworkId String              @db.Uuid
+  key         String
+  title       String
+  description String
+  framework   ComplianceFramework @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
+  mappings    ComplianceMapping[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([frameworkId, key])
+  @@map("compliance_controls")
+}
+
+model ComplianceMapping {
+  id        String            @id @default(uuid()) @db.Uuid
+  tenantId  String            @db.Uuid
+  controlId String            @db.Uuid
+  policyId  String?           @db.Uuid
+  findingId String?           @db.Uuid
+  rationale String
+  createdAt DateTime          @default(now())
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  control   ComplianceControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  policy    Policy?           @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: NoAction)
+  finding   Finding?          @relation(fields: [tenantId, findingId], references: [tenantId, id], onDelete: NoAction)
+
+  @@index([tenantId, controlId])
+  @@index([tenantId, policyId])
+  @@map("compliance_mappings")
+}
+
+model AttackGraphNode {
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @db.Uuid
+  assetId       String?             @db.Uuid
+  kind          AttackGraphNodeKind
+  externalId    String
+  label         String
+  properties    Json
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset         Asset?              @relation(fields: [tenantId, assetId], references: [tenantId, id], onDelete: NoAction)
+  outgoingEdges AttackGraphEdge[]   @relation("AttackGraphSource")
+  incomingEdges AttackGraphEdge[]   @relation("AttackGraphTarget")
+
+  @@unique([tenantId, externalId])
+  @@unique([tenantId, id])
+  @@index([tenantId, kind])
+  @@map("attack_graph_nodes")
+}
+
+model AttackGraphEdge {
+  id           String              @id @default(uuid()) @db.Uuid
+  tenantId     String              @db.Uuid
+  sourceNodeId String              @db.Uuid
+  targetNodeId String              @db.Uuid
+  kind         AttackGraphEdgeKind
+  label        String
+  properties   Json
+  createdAt    DateTime            @default(now())
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceNode   AttackGraphNode     @relation("AttackGraphSource", fields: [tenantId, sourceNodeId], references: [tenantId, id], onDelete: Cascade)
+  targetNode   AttackGraphNode     @relation("AttackGraphTarget", fields: [tenantId, targetNodeId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, kind])
+  @@index([sourceNodeId])
+  @@index([targetNodeId])
+  @@map("attack_graph_edges")
+}
+
+model Remediation {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  findingId        String            @db.Uuid
+  source           RemediationSource
+  guidanceMarkdown String
+  terraformPatch   String?
+  awsCliCommands   Json?
+  isDestructive    Boolean           @default(false)
+  createdByUserId  String?           @db.Uuid
+  createdAt        DateTime          @default(now())
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  finding          Finding           @relation(fields: [tenantId, findingId], references: [tenantId, id], onDelete: Cascade)
+  createdBy        User?             @relation("RemediationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, findingId, createdAt])
+  @@map("remediations")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String?  @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  targetType  String
+  targetId    String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String             @id @default(uuid()) @db.Uuid
+  tenantId  String             @db.Uuid
+  userId    String?            @db.Uuid
+  type      String
+  title     String
+  body      String
+  status    NotificationStatus @default(UNREAD)
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime           @default(now())
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, createdAt])
+  @@index([userId, status])
+  @@map("notifications")
+}
+
+model ApiKey {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @db.Uuid
+  createdByUserId String?      @db.Uuid
+  name            String
+  keyPrefix       String
+  keyHash         String
+  status          ApiKeyStatus @default(ACTIVE)
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime     @default(now())
+  revokedAt       DateTime?
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User?        @relation("ApiKeyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, keyPrefix])
+  @@index([tenantId, status])
+  @@map("api_keys")
+}
+
+model RefreshToken {
+  id              String             @id @default(uuid()) @db.Uuid
+  userId          String             @db.Uuid
+  tenantId        String?            @db.Uuid
+  tokenHash       String             @unique
+  familyId        String
+  parentTokenId   String?            @db.Uuid
+  status          RefreshTokenStatus @default(ACTIVE)
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  reuseDetectedAt DateTime?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime           @default(now())
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant          Tenant?            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentToken     RefreshToken?      @relation("RefreshTokenRotation", fields: [parentTokenId], references: [id], onDelete: SetNull)
+  childTokens     RefreshToken[]     @relation("RefreshTokenRotation")
+
+  @@index([userId, status])
+  @@index([familyId])
+  @@index([tenantId, createdAt])
+  @@map("refresh_tokens")
+}
+
+model MfaDevice {
+  id                   String        @id @default(uuid()) @db.Uuid
+  userId               String        @db.Uuid
+  tenantId             String?       @db.Uuid
+  type                 MfaDeviceType
+  label                String
+  secretCiphertext     String?
+  webauthnCredentialId String?
+  createdAt            DateTime      @default(now())
+  lastUsedAt           DateTime?
+  revokedAt            DateTime?
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant               Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([tenantId])
+  @@map("mfa_devices")
+}
