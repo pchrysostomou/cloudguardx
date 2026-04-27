@@ -10,6 +10,7 @@ import { WorkerService } from "./worker.service";
   imports: [
     ConfigModule.forRoot({
       cache: true,
+      envFilePath: [".env", "../../.env"],
       isGlobal: true,
       validate: validateWorkerEnvironment
     }),

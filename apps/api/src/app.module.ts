@@ -6,6 +6,7 @@ import { AuditLogModule } from "./audit-log/audit-log.module";
 import { AuthModule } from "./auth/auth.module";
 import { AssetsModule } from "./assets/assets.module";
 import { CloudAccountsModule } from "./cloud-accounts/cloud-accounts.module";
+import { AuthSupportModule } from "./common/auth/auth-support.module";
 import { ComplianceModule } from "./compliance/compliance.module";
 import { validateEnvironment } from "./config/env.schema";
 import { PrismaModule } from "./database/prisma.module";
@@ -22,10 +23,12 @@ import { UsersModule } from "./users/users.module";
   imports: [
     ConfigModule.forRoot({
       cache: true,
+      envFilePath: [".env", "../../.env"],
       isGlobal: true,
       validate: validateEnvironment
     }),
     PrismaModule,
+    AuthSupportModule,
     HealthModule,
     AuditLogModule,
     UsersModule,

@@ -39,9 +39,11 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
 
     const pollIntervalMs = this.pollIntervalMs();
     this.pollTimer = setInterval(() => {
-      void this.processNextJob();
+      void this.processNextJob().catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : "Unknown worker polling failure";
+        this.logger.error(`Scanner worker polling failed: ${errorMessage}`);
+      });
     }, pollIntervalMs);
-    this.pollTimer.unref();
     this.logger.log(`Scanner worker polling every ${pollIntervalMs}ms`);
   }
 

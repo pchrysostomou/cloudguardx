@@ -21,7 +21,7 @@ EXPOSE 3000
 CMD ["npm", "run", "start:dev", "--workspace", "@cloudguardx/api"]
 
 FROM development AS build
-RUN npm run build --workspace @cloudguardx/api
+RUN npm run db:generate && npm run build --workspace @cloudguardx/api
 
 FROM node:22-bookworm-slim AS production
 WORKDIR /workspace
@@ -40,6 +40,10 @@ RUN npm install --omit=dev
 
 COPY --from=build /workspace/apps/api/dist apps/api/dist
 COPY --from=build /workspace/apps/api/prisma apps/api/prisma
+COPY --from=build /workspace/packages/shared-types/dist packages/shared-types/dist
+COPY --from=build /workspace/packages/policy-engine/dist packages/policy-engine/dist
+COPY --from=build /workspace/node_modules/.prisma node_modules/.prisma
+COPY --from=build /workspace/node_modules/@prisma/client node_modules/@prisma/client
 
 EXPOSE 3000
 CMD ["node", "apps/api/dist/main.js"]
